@@ -175,6 +175,12 @@ fix_stim = visual.TextStim(win,
                             height = 50,
                             font = "Roboto Mono Medium")
 
+#define waiting function so experiment doesn't freeze as it does with wait()
+def wait(time):
+    countdown_timer = core.CountdownTimer(time)
+    while countdown_timer.getTime() > 0:
+        termination_check()
+        
 #create instruction trials
 def instruction_trial(instructions,
                       holdtime=0,
@@ -190,7 +196,7 @@ def instruction_trial(instructions,
                     wrapWidth= 960
                     ).draw()
     win.flip()
-    core.wait(holdtime)
+    wait(holdtime)
     visual.TextStim(win,
                     text = instructions,
                     height = text_height,
@@ -209,7 +215,7 @@ def instruction_trial(instructions,
     event.waitKeys(keyList=key)
     win.flip()
     
-    core.wait(2)
+    wait(2)
     
 # Create functions
     # Save responses to a CSV file
@@ -600,7 +606,7 @@ def show_fam_trial(current_trial):
     
     if pport != None:
         pport.setData(pain_trig+eda_trig)
-        core.wait(port_buffer_duration)
+        wait(port_buffer_duration)
         pport.setData(0)
     
     # Get pain rating
@@ -622,7 +628,7 @@ def show_fam_trial(current_trial):
     fam_rating.reset()
     
     win.flip()
-    core.wait(familiarisation_iti)
+    wait(familiarisation_iti)
     
 def show_trial(current_trial,
                trialtype,
@@ -673,7 +679,7 @@ def show_trial(current_trial,
                 pport.setData(eda_trig)
 
             win.flip()
-            core.wait(trial_iti)   
+            wait(trial_iti)   
             current_trial["iti"] = trial_iti
 
             if pport!= None:
@@ -801,7 +807,7 @@ def show_trial(current_trial,
         
         if pport != None:
             pport.setData(pain_trig+eda_trig)
-            core.wait(port_buffer_duration)
+            wait(port_buffer_duration)
             pport.setData(0)
 
         # Get pain rating
@@ -825,7 +831,7 @@ def show_trial(current_trial,
         pain_rating.reset()
 
         win.flip()
-        core.wait(trial_iti)
+        wait(trial_iti)
         current_trial["iti"] = trial_iti
         
 def webcam_waiting(waittime = 5):
