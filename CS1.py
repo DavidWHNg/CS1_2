@@ -33,7 +33,6 @@ rating_text_pos = (0,-250)
 text_height = 30 
 
 #trials
-blockorder = [1,2,3,0]
 pain_response_duration = float("inf")
 response_hold_duration = 1 # How long the rating screen is left on the response (only used for Pain ratings)
 TENS_pulse_int = 0.1 # interval length for TENS on/off signals (e.g. 0.1 = 0.2s per pulse)
@@ -48,14 +47,16 @@ video_painratings_mean = {"TENS" : 81, "control": 31}
 video_painratings_spread = {"TENS" : 5, "control" : 5}
 video_painratings_buffer = 5
 
-video_stim_introtime = 5
+video_stim_introtime = 10
 video_stim_iti = 6
 
-video_stim_trialtime = trial_countdown_time + video_stim_introtime + video_stim_iti #social modelling trial timing (should 21s for LI1, LI2)
+video_stim_trialtime = trial_countdown_time + video_stim_introtime + video_stim_iti + port_buffer_duration #social modelling trial timing (should 22s for LI1, LI2)
 
 video_stim_models_list = ['m1','m2','m3','m4']
+video_blocks_list = ["b1","b2","b3","b4"]
+video_intro_name = "intro"
 
-video_stim_size = (400,300)
+video_stim_size = (300,225)
 
 webcam_stim_pos = (0,-300)
 webcam_stim_size = (400,300)
@@ -97,32 +98,22 @@ while True:
             print(f"Data for participant {P_info['PID']} already exists. Choose a different participant ID.") ### to avoid re-writing existing data
         
         
-        # Group == 1 == single + short (8)
-        # Group == 2 == single + long (32)
-        # Group == 3 == multiple + short (2 + 2 + 2 +2)
-        # Group == 4 == multiple + long (8 + 8 + 8 +8)
+        # Group == 1 == single (4 trials)
+        # Group == 2 == multiple (4 + 4 + 4 + 4 trials)
+        
         # cb == 1 == TENS = GREEN, control = BLUE
         # cb == 2 == TENS = BLUE, control = GREEN
             
         else:
-            # Define modelling group/length lists for group parameters
-            modelling_groups_list = ["single", "single", "multiple", "multiple"]
-            modelling_lengths_list = ["short", "long", "short", "long"]
-
-            # Get PID mod 8
-            pid_mod = int(P_info["PID"]) % 8
-
-            # Ensure pid_mod cycles from 1 to 8
-            group_index = (pid_mod) % 4  # Cycles through 0-3 for lookup
-
-            # Determine counterbalance (1 or 2)
-            cb = group_index + 1
+            PID = int(P_info["PID"])
+            modelling_groups_list = ["single", "multiple"]
 
             # Assign variables using the lookup tables
-            group = group_index + 1
-            modelling_group = modelling_groups_list[group_index]
-            modelling_length = modelling_lengths_list[group_index]
-            groupname = modelling_group + modelling_length
+            group = PID % 2
+            groupname = modelling_groups_list[group]
+
+            # Determine counterbalance (1 or 2)
+            cb = PID // 2 % 2
 
             break  # Exit the loop if the participant ID is valid
         
@@ -135,18 +126,18 @@ datetime = time.strftime("%Y-%m-%d_%H.%M.%S")
 
 #set stimulus colours according to cb 
 stim_colours = {
-  "TENS" : cue_colours[cb%2-1],
-  "control": cue_colours[-cb%2] 
+  "TENS" : cue_colours[cb],
+  "control": cue_colours[1-cb] 
 }
 
 stim_colour_names = {
-    "TENS" : cue_colour_names[cb%2-1],
-    "control": cue_colour_names[-cb%2]
+    "TENS" : cue_colour_names[cb],
+    "control": cue_colour_names[1-cb]
 }
 
 stim_positions = {
-    "TENS" : cue_positions[cb%2-1],
-    "control" : cue_positions[-cb%2]
+    "TENS" : cue_positions[cb],
+    "control" : cue_positions[1-cb]
 }
 
 #set seed for according to PID, matching pain-ratings between short-short and long-long
@@ -227,10 +218,7 @@ def save_data(data):
         trial["SONA"] = P_info["SONA"]
         trial["group"] = group
         trial["groupname"] = groupname
-        trial["modelling_group"] = modelling_group
-        trial["modelling_length"] = modelling_length
         trial["cb"] = cb
-        trial['blockorder'] = blockorder
         trial["tens_colour"] = stim_colour_names["TENS"]
         trial["control_colour"] = stim_colour_names["control"]
 
@@ -286,6 +274,7 @@ for i in range(1, num_familiarisation + 1):
         "trialname": "familiarisation_" + str(i),
         "trialtype": "familiarisation",
         "model" : None,
+        "block" : None,
         "model_video_name" : None,
         "exp_response": None,
         "pain_response": None,
@@ -293,58 +282,58 @@ for i in range(1, num_familiarisation + 1):
     } 
 
     trial_order.append(trial)
-
-
+    
 #define conditioning trials
-num_blocks_conditioning = 4 # 4 blocks of 8/2 depending on short or long (equal TENS and no-TENS)
+num_blocks_conditioning = 4 #multiple group sees 4 blocks
+num_trials_per_block = 4 # each block has 2 pairs of TENS and no-TENS trials
 
 model_stim_blocks = { #pre-determined stimulus order for each model 
     "m1": {
-        "b1": ['TENS','control','TENS','control','TENS','control','control','TENS'],
-        "b2": ['control','TENS','control','TENS','control','TENS','TENS','control'],
-        "b3": ['control','TENS','control','TENS','control','TENS','TENS','control'],
-        "b4": ['control','TENS','control','TENS','TENS','control','TENS','control']
+        "b1": ['TENS','control','TENS','control'],
+        "b2": ['TENS','control','control','TENS'],
+        "b3": ['control','TENS','control','TENS'],
+        "b4": ['control','TENS','TENS','control']
     },
     "m2": {
-        "b1": ['control','TENS','control','TENS','control','TENS','TENS','control'],
-        "b2": ['TENS','control','TENS','control','TENS','control','TENS','control'],
-        "b3": ['TENS','control','TENS','control','control','TENS','TENS','control'],
-        "b4": ['TENS','control','TENS','control','control','TENS','TENS','control']
+        "b1": ['control','TENS','control','TENS'],
+        "b2": ['control','TENS','TENS','control'],
+        "b3": ['TENS','control','TENS','control'],
+        "b4": ['TENS','control','TENS','control']
     },
     "m3": {
-        "b1": ['control','TENS','control','TENS','control','TENS','TENS','control'],
-        "b2": ['TENS','control','control','TENS','TENS','control','control','TENS'],
-        "b3": ['control','TENS','TENS','control','control','TENS','TENS','control'],
-        "b4": ['control','TENS','control','TENS','control','TENS','TENS','control']
+        "b1": ['control','TENS','control','TENS'],
+        "b2": ['control','TENS','TENS','control'],
+        "b3": ['TENS','control','control','TENS'],
+        "b4": ['TENS','control','control','TENS']
     },
     "m4": {
-        "b1": ['control','TENS','control','TENS','TENS','control','TENS','control'],
-        "b2": ['TENS','control','TENS','control','TENS','control','control','TENS'],
-        "b3": ['control','TENS','control','TENS','control','TENS','TENS','control'],
-        "b4": ['TENS','control','control','TENS','TENS','control','TENS','control']
+        "b1": ['control','TENS','control','TENS'],
+        "b2": ['TENS','control','TENS','control'],
+        "b3": ['TENS','control','TENS','control'],
+        "b4": ['TENS','control','control','TENS']
     }
 }
 
-model_outcome_order = ['high', 'low','high', 'low','high', 'low','high','low']
+model_stim_outcomes = {
+    "TENS": "high",
+    "control": "low",
+    }
 
-video_stim_models_list = ['m1','m2','m3','m4']
+random.shuffle(video_stim_models_list)
+random.shuffle(video_blocks_list)
 
-if modelling_group == "multiple": 
-    models_to_use = video_stim_models_list
-elif modelling_group == "single":
-    models_to_use = [video_stim_models_list[cb-1]]*4  # or whichever model you want to use for single
-
-if modelling_length == "long": 
-    num_trials_per_block = 8
-elif modelling_length == "short":
-    num_trials_per_block = 2
+if groupname == "single":
+    video_stim_models_order = [video_stim_models_list[0]]*num_blocks_conditioning
+else: 
+    video_stim_models_order = video_stim_models_list
 
 ### create list of trials based on trial_block order, iterating through stimulus + outcome blocks in parallel
 for block in range(1,num_blocks_conditioning+1):
-    model = models_to_use[block-1]
+    model = video_stim_models_order[block-1]
+    blockname = video_blocks_list[block-1]
     for trialnum in range(num_trials_per_block):
-        stimulus = model_stim_order[trialnum]
-        outcome = model_outcome_order[trialnum]
+        stimulus = model_stim_blocks[model][blockname][trialnum]
+        outcome = model_stim_outcomes[stimulus]
         trial = {
             "phase": "conditioning",
             "blocknum": block,
@@ -353,7 +342,8 @@ for block in range(1,num_blocks_conditioning+1):
             "trialname": f"{stimulus}_{outcome}",
             "trialtype": "socialmodel",
             "model" : model,
-            "model_video_name" : f"{model}_block{block}.mp4",
+            "block" : block,
+            "model_video_name" : f"{model}_{blockname}.mp4",
             "exp_response": None,
             "pain_response": None,
             "iti" : None
@@ -361,24 +351,29 @@ for block in range(1,num_blocks_conditioning+1):
         trial_order.append(trial)
         
 #define extinction trials
-num_blocks_extinction = 4 #4 blocks of 8 (4 x TENS, 4 x no-TENS)
-
-extinction_stim_order = ['TENS', 'control', 'TENS', 'control', 'TENS', 'control', 'TENS','control']
-extinction_outcome_block = ['low']*8 #low heat for every trial in extinction regardless of stimulus
+num_blocks_extinction = 2 #2 blocks of uninterrupted 16 trials (8 pairs of TENS and control)
+num_pairs_extinction = 8
+extinction_stim_pair = ['TENS','control']
 
 #create extinction trials, all outcomes same regardless of condition (low heat)
 for block in range(num_blocks_conditioning+1,num_blocks_conditioning+num_blocks_extinction+1):
-    for trialnum in range(len(extinction_stim_order)):
-        stimulus = extinction_stim_order[trialnum]
-        outcome = extinction_outcome_block[trialnum]
+    extinction_block = []
+    for pair in range(num_pairs_extinction):
+        shuffled_pair = extinction_stim_pair
+        random.shuffle(shuffled_pair)
+        extinction_block.extend(shuffled_pair)
+    
+    for trialnum in range(len(extinction_stim_pair)*num_pairs_extinction):
+        stimulus = extinction_block[trialnum]
         trial = {
             "phase": "extinction",
             "blocknum": block,
             "stimulus": stimulus,
-            "outcome": outcome,
+            "outcome": "low",
             "trialname": str(stimulus) + "_" + str(outcome),
-            "trialtype": "conditioning",
+            "trialtype": "experience",
             "model" : None,
+            "block" : block,
             "model_video_name" : None,
             "exp_response": None,
             "pain_response": None,
@@ -558,11 +553,14 @@ cue_stims = {"TENS" : visual.Rect(win,
              }
 
 #set video stimuli according to group:
-if modelling_group == "multiple": 
-    video_stim_pos = [(-500,300), (-200,300),(200,300),(500,300)]
+video_stim_size = (300,225)
+video_stim_gap = 50
+
+if groupname == "multiple": 
+    video_stim_pos = [(-(video_stim_size[0]+50),300), (-(video_stim_size[0]/2+50),300),(video_stim_size[0]/2+50,300),(video_stim_size[0]+50,300)]
     video_stim_models = video_stim_models_list
     
-elif modelling_group == "single": 
+elif groupname == "single": 
     video_stim_pos = [(0,300)]
     video_stim_models = [video_stim_models_list[0]]
     
@@ -750,7 +748,7 @@ def show_trial(current_trial,
             
     #if it's a conditioning/extinction trial, do regular 10 second countdown with stimuli + pain stimulus etc.  
       
-    elif trialtype == "standard": 
+    elif trialtype == "experience": 
         while countdown_timer.getTime() > 8:
             termination_check()
             countdown_text[str(int(math.ceil(countdown_timer.getTime())))].draw()
@@ -969,10 +967,10 @@ while not exp_finish:
     # instruction_trial(instructions_text["conditioning"])
         
     # # #run social modelling manipulation
-    # # webcam_waiting()
-    # socialmodel_stream(playtime = video_stim_introtime,
-    #                     socialmodel_stim=intro_videos,
-    #                     webcam=True)
+    # webcam_waiting()
+    socialmodel_stream(playtime = video_stim_introtime,
+                        socialmodel_stim=intro_videos,
+                        webcam=True)
         
     # for trial in list(filter(lambda trial: trial['phase'] == "conditioning", trial_order)):
     #     current_blocknum = trial['blocknum']
