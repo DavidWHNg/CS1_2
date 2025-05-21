@@ -7,7 +7,7 @@ import csv
 import os
 import cv2
 
-ports_live = None # Set to None if parallel ports not plugged for coding/debugging other parts of exp
+ports_live = True # Set to None if parallel ports not plugged for coding/debugging other parts of exp
 
 ### Experiment details/parameters
 # parallel port triggers
@@ -49,14 +49,15 @@ video_painratings_buffer = 5
 
 video_stim_introtime = 10
 video_stim_iti = 6
-
-video_stim_trialtime = trial_countdown_time + video_stim_introtime + video_stim_iti + port_buffer_duration #social modelling trial timing (should 22s for LI1, LI2)
+model_rest_time = 8
 
 video_stim_models_list = ['m1','m2','m3','m4']
 video_blocks_list = ["b1","b2","b3","b4"]
 video_intro_name = "intro"
 
 video_stim_size = (300,225)
+video_stim_gap = 50
+video_model_pos = (0,300)
 
 webcam_stim_pos = (0,-300)
 webcam_stim_size = (400,300)
@@ -140,10 +141,6 @@ stim_positions = {
     "control" : cue_positions[1-cb]
 }
 
-#set seed for according to PID, matching pain-ratings between short-short and long-long
-PID_seed = (group % 2) * 1669
-random.seed(PID_seed)
-
 if ports_live == True:
     pport = parallel.ParallelPort(address=port_address) #Get from device Manager
     pport.setData(0)
@@ -187,23 +184,27 @@ def instruction_trial(instructions,
                     wrapWidth= 960
                     ).draw()
     win.flip()
-    wait(holdtime)
-    visual.TextStim(win,
-                    text = instructions,
-                    height = text_height,
-                    color = "white",
-                    pos = (0,0),
-                    wrapWidth= 960
-                    ).draw()
     
-    visual.TextStim(win,
-                    text = buttontext,
-                    height = text_height,
-                    color = "white",
-                    pos = (0,-400)
-                    ).draw()
-    win.flip()
-    event.waitKeys(keyList=key)
+    if key != None:
+        wait(holdtime)
+        visual.TextStim(win,
+                        text = instructions,
+                        height = text_height,
+                        color = "white",
+                        pos = (0,0),
+                        wrapWidth= 960
+                        ).draw()
+        
+        visual.TextStim(win,
+                        text = buttontext,
+                        height = text_height,
+                        color = "white",
+                        pos = (0,-400)
+                        ).draw()
+        event.waitKeys(keyList=key)
+    else: 
+        wait(holdtime)
+        
     win.flip()
     
     wait(2)
@@ -327,10 +328,12 @@ if groupname == "single":
 else: 
     video_stim_models_order = video_stim_models_list
 
+video_blocks_order = video_blocks_list
+
 ### create list of trials based on trial_block order, iterating through stimulus + outcome blocks in parallel
 for block in range(1,num_blocks_conditioning+1):
     model = video_stim_models_order[block-1]
-    blockname = video_blocks_list[block-1]
+    blockname = video_blocks_order[block-1]
     for trialnum in range(num_trials_per_block):
         stimulus = model_stim_blocks[model][blockname][trialnum]
         outcome = model_stim_outcomes[stimulus]
@@ -343,7 +346,7 @@ for block in range(1,num_blocks_conditioning+1):
             "trialtype": "socialmodel",
             "model" : model,
             "block" : block,
-            "model_video_name" : f"{model}_{blockname}.mp4",
+            "model_video_name" : f"{model}_{blockname}",
             "exp_response": None,
             "pain_response": None,
             "iti" : None
@@ -415,6 +418,8 @@ instructions_text = {
                                               "Connection ended."),
     
     "blockrest" : "This is a rest interval. Please wait for the experimenter to adjust the thermode BEFORE pressing SPACEBAR.", 
+
+    "modelrest": "This is a rest interval. Please wait for the other participant to continue the experiment.",
     
     "blockresume" : "Feel free to take as much as rest as necessary before starting the next block.",
     
@@ -553,17 +558,23 @@ cue_stims = {"TENS" : visual.Rect(win,
              }
 
 #set video stimuli according to group:
-video_stim_size = (300,225)
-video_stim_gap = 50
+video_stim_width = video_stim_size[0]
+video_stim_offset = video_stim_width + video_stim_gap
 
 if groupname == "multiple": 
-    video_stim_pos = [(-(video_stim_size[0]+50),300), (-(video_stim_size[0]/2+50),300),(video_stim_size[0]/2+50,300),(video_stim_size[0]+50,300)]
-    video_stim_models = video_stim_models_list
-    
+    video_stim_x_pos = [(-1.5*video_stim_offset),
+                        (-0.5*video_stim_offset),
+                        (0.5*video_stim_offset),
+                        (1.5*video_stim_offset)]
+    video_stim_pos = [(x, 300) for x in video_stim_x_pos]
+    video_stim_models = video_stim_models_order
+
 elif groupname == "single": 
-    video_stim_pos = [(0,300)]
-    video_stim_models = [video_stim_models_list[0]]
-    
+    video_stim_pos = [video_model_pos]
+    video_stim_models = [video_stim_models_order[0]]
+
+
+#load videos
 intro_videos = { 
     f"{model}_intro": visual.MovieStim(
         win,
@@ -577,6 +588,19 @@ intro_videos = {
     for i, model in enumerate(video_stim_models)
 }
 
+model_videos = {
+    f"{model}_{block}": visual.MovieStim(
+        win,
+        filename=os.path.join(stim_folder, f"{model}_{block}.mp4"),
+        size=video_stim_size,
+        pos=video_model_pos,  # Assign correct position
+        volume=1.0,
+        autoStart=False,
+        loop=False
+    )
+    for model in video_stim_models
+    for block in video_blocks_order
+}
 
 #turn on webcam
 webcam_feed = cv2.VideoCapture(0)
@@ -645,69 +669,34 @@ def show_trial(current_trial,
         
     # Set the initial countdown time to 10 seconds
     countdown_timer = core.CountdownTimer(trial_countdown_time)
-    
-    #if pre/post-exposure, show and activate TENS
-    if trialtype == "baseline":  
-            while countdown_timer.getTime() > 8:
-                termination_check()
-                trial_text["baseline"].draw()
-                win.flip()
-                
-                TENS_timer = countdown_timer.getTime() + TENS_pulse_int     
-
-            while countdown_timer.getTime() < 8 and countdown_timer.getTime() > 0: #turn on TENS at 8 seconds
-                termination_check()
-                
-                if pport != None:
-                    if current_trial["stimulus"] != None:
-                    # turn on TENS pulses if TENS trial, at an on/off interval speed of TENS_pulse_int, marking TENS onset with EDA trig
-                        if countdown_timer.getTime() < TENS_timer - TENS_pulse_int:
-                            pport.setData(tens_trig[current_trial["stimulus"]])
-                        if countdown_timer.getTime() < TENS_timer - TENS_pulse_int*2:
-                            pport.setData(0)
-                            TENS_timer = countdown_timer.getTime() 
-                        cue_stims[current_trial["stimulus"]].draw()
-                    trial_text["baseline"].draw()
-                    win.flip() 
-                
-            if pport != None:    
-                pport.setData(0)
-        
-            if pport!= None:
-                pport.setData(eda_trig)
-
-            win.flip()
-            wait(trial_iti)   
-            current_trial["iti"] = trial_iti
-
-            if pport!= None:
-                pport.setData(0) 
         
 # social modelling conditioning trials
     if trialtype == "socialmodel":
+        video_stim = model_videos[video]
+        video_stim.play()
         while countdown_timer.getTime() > 8:
             termination_check()
             countdown_text[str(int(math.ceil(countdown_timer.getTime())))].draw()
-            video.draw()
+            video_stim.draw()
             win.flip()
             
         while countdown_timer.getTime() < 8 and countdown_timer.getTime() > 7: #turn on TENS at 8 seconds
             termination_check()
             countdown_text[str(int(math.ceil(countdown_timer.getTime())))].draw()
             cue_stims[current_trial["stimulus"]].draw()
-            video.draw()
+            video_stim.draw()
             win.flip()
 
         while countdown_timer.getTime() < 7 and countdown_timer.getTime() > 0: #ask for expectancy at 7 seconds
             termination_check()
             countdown_text[str(int(math.ceil(countdown_timer.getTime())))].draw()
-            video.draw()
+            video_stim.draw()
             cue_stims[current_trial["stimulus"]].draw()
             
             # Ask for expectancy rating
             trial_text["expectancy"].draw()
             exp_rating.draw()
-            video.draw()
+            video_stim.draw()
             win.flip()    
 
         if pport!= None:
@@ -719,7 +708,7 @@ def show_trial(current_trial,
         buffer_timer = core.CountdownTimer(video_painratings_buffer + port_buffer_duration)   
                        
         while buffer_timer.getTime() > 0:
-            video.draw()
+            video_stim.draw()
             win.flip() 
 
         if pport!= None:
@@ -736,7 +725,7 @@ def show_trial(current_trial,
         iti_timer = core.CountdownTimer(trial_iti)
         
         while iti_timer.getTime() > 0:
-            video.draw()
+            video_stim.draw()
             trial_text["SMrating"].draw()
             pain_rating.draw()
             win.flip()
@@ -745,6 +734,7 @@ def show_trial(current_trial,
         pain_rating.reset()
 
         current_trial["iti"] = trial_iti
+        video_stim.pause()
             
     #if it's a conditioning/extinction trial, do regular 10 second countdown with stimuli + pain stimulus etc.  
       
@@ -934,9 +924,9 @@ def socialmodel_stream(playtime = 5,socialmodel_stim = intro_videos, webcam = Tr
             webcam_stim.draw()
         
         #draw social model videos
-        for video in socialmodel_stim.values():
-                video.draw()
-                video.play()
+        for video_stim in socialmodel_stim.values():
+                video_stim.draw()
+                video_stim.play()
                 
         win.flip()
     
@@ -953,60 +943,59 @@ lastblocknum = None
 while not exp_finish:
     termination_check()
     
-    # # ### introduce TENS and run familiarisation procedure
-    # instruction_trial(instructions_text["welcome"],3)
-    # instruction_trial(instructions_text["TENS_introduction"],6)
-    # instruction_trial(instructions_text["familiarisation_1"],10)
-    # instruction_trial(instructions_text["familiarisation_2"],10)
+    # ### introduce TENS and run familiarisation procedure
+    instruction_trial(instructions_text["welcome"],3)
+    instruction_trial(instructions_text["TENS_introduction"],6)
+    instruction_trial(instructions_text["familiarisation_1"],10)
+    instruction_trial(instructions_text["familiarisation_2"],10)
     
-    # for trial in list(filter(lambda trial: trial['phase'] == "familiarisation", trial_order)):
-    #     show_fam_trial(trial)
-    # instruction_trial(instructions_text["familiarisation_finish"],2)
+    for trial in trial_order:
+        if trial["phase"] == "familiarisation":
+            show_fam_trial(trial)
+            
+    instruction_trial(instructions_text["familiarisation_finish"],2)
 
-    # # # run conditioning and extinction phases
-    # instruction_trial(instructions_text["conditioning"])
+    # # run conditioning and extinction phases
+    instruction_trial(instructions_text["conditioning"])
         
-    # # #run social modelling manipulation
-    # webcam_waiting()
+    #run social modelling manipulation
+    webcam_waiting()
     socialmodel_stream(playtime = video_stim_introtime,
                         socialmodel_stim=intro_videos,
                         webcam=True)
-        
-    # for trial in list(filter(lambda trial: trial['phase'] == "conditioning", trial_order)):
-    #     current_blocknum = trial['blocknum']
-    #     if lastblocknum is not None and current_blocknum != lastblocknum:
-    #         socialmodel_stream(playtime = 71,
-    #             socialmodel_stim=video_stim,
-    #             webcam=None)
-    #     show_trial(trial,
-    #             trialtype="socialmodel",
-    #             video=video_stim)
-    #     lastblocknum = current_blocknum
 
-    # #keep video going after conditioning phase and then flip at end:
-    # while video_stim.isFinished == False:
-    #     video_stim.draw()
-    #     win.flip()
+    currentblock = 1
+    
+    for trial in trial_order:
+        if trial["phase"] == "conditioning":
+            if trial["blocknum"] > currentblock:
+                instruction_trial(instructions_text["modelrest"],
+                                holdtime = model_rest_time,
+                                key = None)
+            show_trial(trial,
+                trialtype="socialmodel",
+                video=trial["model_video_name"])
+            currentblock = trial["blocknum"]
 
-    # win.flip()
-    # instruction_trial(instructions_text["experiment_webcam_finish"],3)
+    win.flip()
+    instruction_trial(instructions_text["experiment_webcam_finish"],3)
 
-    # lastblocknum = None
+    lastblocknum = None
 
-    # instruction_trial(instructions_text["extinction"],10)
-    # for trial in list(filter(lambda trial: trial['phase'] == "extinction", trial_order)):
-    #     current_blocknum = trial['blocknum']
-    #     if lastblocknum is not None and current_blocknum != lastblocknum:
-    #         instruction_trial(instructions_text["blockrest"],10)
-    #     show_trial(trial,"standard")
-    #     lastblocknum = current_blocknum
+    instruction_trial(instructions_text["extinction"],10)
+    for trial in list(filter(lambda trial: trial['phase'] == "extinction", trial_order)):
+        current_blocknum = trial['blocknum']
+        if lastblocknum is not None and current_blocknum != lastblocknum:
+            instruction_trial(instructions_text["blockrest"],10)
+        show_trial(trial,"standard")
+        lastblocknum = current_blocknum
 
-    # if pport != None:
-    #     pport.setData(0)
+    if pport != None:
+        pport.setData(0)
         
     # save trial data
     save_data(trial_order)
-    # exit_screen(instructions_text["end"])
+    exit_screen(instructions_text["end"])
     
     exp_finish = True
     
